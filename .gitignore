@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+proof-results*.json
+*.log
+*.log*
+.env
+.env.*
+*.env
+.DS_Store
+.eslintcache
