@@ -3,6 +3,8 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { runAllChecks } from './checks'
+import { registerNoodleIpc } from './ipc/register'
+import { assertTrustedSender } from './ipc/trusted'
 
 const productionContentSecurityPolicy =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'"
@@ -112,17 +114,30 @@ app.whenReady().then(async () => {
     })
   }
 
-  ipcMain.handle('run-checks', async () => {
-    if (isVerifyOnly) console.log('[Verify Stage] run-checks IPC received in main')
+  registerNoodleIpc()
+
+  ipcMain.handle('run-checks', async (event) => {
+    assertTrustedSender(event)
+    if (!isVerifyOnly) throw new Error('Verification mode required')
+    console.log('[Verify Stage] run-checks IPC received in main')
     return await runAllChecks(app.isPackaged)
   })
 
-  ipcMain.on('renderer-check-result', (_event, result) => {
-    if (isVerifyOnly) {
-      console.log('[Verify Stage] renderer-check-result received')
-      if (verificationTimeout) clearTimeout(verificationTimeout)
+  ipcMain.on('renderer-check-result', (event, result) => {
+    try {
+      assertTrustedSender(event)
+    } catch {
+      return
     }
+    if (!isVerifyOnly) return
+    console.log('[Verify Stage] renderer-check-result received')
+    if (verificationTimeout) clearTimeout(verificationTimeout)
     console.log('[Native Proof] Received result from Renderer -> Preload bridge:')
+    if (result.report?.checks) {
+      for (const check of result.report.checks) {
+        console.log(`[Renderer Check] [${check.status}] ${check.name}: ${check.details}`)
+      }
+    }
     if (result.success && result.report?.allPassed) {
       console.log('[Native Proof] Verification PASSED through real renderer button path.')
       if (isVerifyOnly) {

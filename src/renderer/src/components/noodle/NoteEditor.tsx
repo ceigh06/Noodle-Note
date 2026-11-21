@@ -84,14 +84,18 @@ export function NoteEditor({
         setSaved(false)
         clearTimeout(timer.current)
         timer.current = setTimeout(async () => {
-          const firstLine = editor.getText().split('\n').find(Boolean) ?? 'Untitled note'
-          const n = await noodleAPI.notes.save({
-            ...note,
-            title: firstLine.slice(0, 80),
-            content: editor.getHTML()
-          })
-          onSaved(n)
-          setSaved(true)
+          try {
+            const firstLine = editor.getText().split('\n').find(Boolean) ?? 'Untitled note'
+            const n = await noodleAPI.notes.save({
+              ...note,
+              title: firstLine.slice(0, 80),
+              content: editor.getHTML()
+            })
+            onSaved(n)
+            setSaved(true)
+          } catch {
+            setSaved(false)
+          }
         }, 600)
       }
     },
@@ -103,8 +107,15 @@ export function NoteEditor({
   const insertFiles = async (files: FileList | null, ed: Editor | null): Promise<void> => {
     if (!files || !ed) return
     for (const f of Array.from(files).filter((f) => f.type.startsWith('image/'))) {
-      const { relativePath, previewUrl } = await noodleAPI.assets.import(f)
-      ed.chain().focus().setImage({ src: previewUrl, alt: relativePath, title: relativePath }).run()
+      try {
+        const { relativePath, previewUrl } = await noodleAPI.assets.import(f)
+        ed.chain()
+          .focus()
+          .setImage({ src: previewUrl, alt: relativePath, title: relativePath })
+          .run()
+      } catch {
+        return
+      }
     }
   }
 

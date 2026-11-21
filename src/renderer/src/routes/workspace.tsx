@@ -58,7 +58,10 @@ function App(): React.ReactNode {
   const [notes, setNotes] = useState<Note[]>([])
 
   useEffect(() => {
-    noodleAPI.notes.list().then(setNotes)
+    noodleAPI.notes
+      .list()
+      .then(setNotes)
+      .catch(() => setNotes([]))
   }, [pathname])
 
   const active = notes.find((n) => n.id === ui.activeNoteId) ?? null
@@ -68,9 +71,13 @@ function App(): React.ReactNode {
     )
 
   const addNote = async (): Promise<void> => {
-    const n = await noodleAPI.notes.create(ui.pillar === 'sources' ? 'manual' : ui.pillar)
-    upsert(n)
-    ui.openNote(n.id)
+    try {
+      const n = await noodleAPI.notes.create(ui.pillar === 'sources' ? 'manual' : ui.pillar)
+      upsert(n)
+      ui.openNote(n.id)
+    } catch {
+      return
+    }
   }
 
   if (ui.miniMode && !toolActive) {

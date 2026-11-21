@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
+import { createBridge } from './bridge'
 
 export interface CheckResult {
   name: string
@@ -34,16 +34,23 @@ const api = {
   }
 }
 
+const { noodleAPI, noodleSecureKeys } = createBridge((channel, payload) =>
+  ipcRenderer.invoke(channel, payload)
+)
+
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
+    contextBridge.exposeInMainWorld('noodleAPI', noodleAPI)
+    contextBridge.exposeInMainWorld('noodleSecureKeys', noodleSecureKeys)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
     console.error(error)
   }
 } else {
   // @ts-ignore - renderer window typing fallback
-  window.electron = electronAPI
+  window.noodleAPI = noodleAPI
+  // @ts-ignore - renderer window typing fallback
+  window.noodleSecureKeys = noodleSecureKeys
   // @ts-ignore - renderer window typing fallback
   window.api = api
 }

@@ -1,5 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { VerificationReport } from '../../preload/index'
+
+type VerificationCheck = { name: string; status: 'PASS' | 'FAIL'; details: string }
+type VerificationReport = {
+  mode: 'dev' | 'packaged'
+  timestamp: string
+  versions: {
+    electron: string
+    node: string
+    betterSqlite3: string
+    sqliteVec: string
+    onnxruntimeNode: string
+  }
+  checks: VerificationCheck[]
+  allPassed: boolean
+}
 
 export default function App(): React.JSX.Element {
   const [report, setReport] = useState<VerificationReport | null>(null)
@@ -46,11 +60,148 @@ export default function App(): React.JSX.Element {
       return
     }
 
+    const rendererCheck = async (
+      name: string,
+      check: () => Promise<string> | string
+    ): Promise<{ name: string; status: 'PASS' | 'FAIL'; details: string }> => {
+      try {
+        return { name, status: 'PASS', details: await check() }
+      } catch (error) {
+        return {
+          name,
+          status: 'FAIL',
+          details: error instanceof Error ? error.message : String(error)
+        }
+      }
+    }
+
+    const runRendererChecks = async (): Promise<VerificationReport['checks']> => {
+      const checks: VerificationReport['checks'] = []
+      checks.push(
+        await rendererCheck('bridge', async () => {
+          if (
+            typeof window.noodleAPI?.notes?.list !== 'function' ||
+            typeof window.noodleAPI.notes.get !== 'function' ||
+            typeof window.noodleAPI.notes.save !== 'function' ||
+            typeof window.noodleAPI.notes.create !== 'function' ||
+            typeof window.noodleAPI.assets?.importBytes !== 'function' ||
+            typeof window.noodleSecureKeys?.isSecureStorageAvailable !== 'function' ||
+            typeof window.noodleSecureKeys.testAndSaveKey !== 'function'
+          )
+            throw new Error('Bridge methods are not functions')
+          const notes = await window.noodleAPI.notes.list()
+          if (notes.length !== 11) throw new Error(`Expected 11 notes, received ${notes.length}`)
+          const first = await window.noodleAPI.notes.get(notes[0].id)
+          if (!first || first.id !== notes[0].id)
+            throw new Error('notes.get returned the wrong note')
+          return `notes.list returned ${notes.length} notes; notes.get matched ${first.id}`
+        })
+      )
+      checks.push(
+        await rendererCheck('isolation', () => {
+          const values = {
+            require: typeof (globalThis as { require?: unknown }).require,
+            process: typeof (globalThis as { process?: unknown }).process,
+            electron: typeof (window as Window & { electron?: unknown }).electron
+          }
+          if (
+            values.require !== 'undefined' ||
+            values.process !== 'undefined' ||
+            values.electron !== 'undefined'
+          )
+            throw new Error(`Isolation values: ${JSON.stringify(values)}`)
+          return `require=${values.require}, process=${values.process}, window.electron=${values.electron}`
+        })
+      )
+      checks.push(
+        await rendererCheck('ipc-surface', () => {
+          const apiKeys = Object.keys(window.noodleAPI ?? {})
+          const noteKeys = Object.keys(window.noodleAPI?.notes ?? {})
+          const assetKeys = Object.keys(window.noodleAPI?.assets ?? {})
+          const secureKeys = Object.keys(window.noodleSecureKeys ?? {})
+          const forbidden = ['ipcRenderer', 'invoke', 'send', 'electron']
+          const invalid =
+            JSON.stringify(apiKeys) !== JSON.stringify(['notes', 'assets']) ||
+            JSON.stringify(noteKeys) !== JSON.stringify(['list', 'get', 'save', 'create']) ||
+            JSON.stringify(assetKeys) !== JSON.stringify(['importBytes']) ||
+            JSON.stringify(secureKeys) !==
+              JSON.stringify(['isSecureStorageAvailable', 'testAndSaveKey']) ||
+            window.noodleStudy !== undefined ||
+            forbidden.some((key) => Object.prototype.hasOwnProperty.call(window, key))
+          if (invalid)
+            throw new Error(
+              `api=${JSON.stringify(apiKeys)}, notes=${JSON.stringify(noteKeys)}, assets=${JSON.stringify(assetKeys)}, secure=${JSON.stringify(secureKeys)}, noodleStudy=${typeof window.noodleStudy}, window.api=${typeof window.api}`
+            )
+          return `window.api=${typeof window.api}`
+        })
+      )
+      checks.push(
+        await rendererCheck('byok-no-store', async () => {
+          if (await window.noodleSecureKeys!.isSecureStorageAvailable())
+            throw new Error('Secure storage unexpectedly available')
+          try {
+            await window.noodleSecureKeys!.testAndSaveKey({
+              provider: 'openai',
+              key: 'TEST-KEY-12345'
+            })
+            throw new Error('Secure key save unexpectedly resolved')
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            const expected =
+              'Secure saving requires the desktop app with an available OS key store. No key was sent or saved.'
+            if (!message.includes(expected))
+              throw new Error(`Unexpected secure key error: ${message}`, { cause: error })
+            return 'Secure storage unavailable and key save rejected without exposing the key'
+          }
+        })
+      )
+      checks.push(
+        await rendererCheck('bytes-roundtrip', async () => {
+          const encoded =
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+          const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))
+          const result = await window.noodleAPI!.assets.importBytes({
+            name: 'proof.png',
+            mimeType: 'image/png',
+            bytes
+          })
+          if (result.relativePath !== './assets/proof.png') throw new Error('Unexpected asset path')
+          await expectRejected(() =>
+            window.noodleAPI!.assets.importBytes({ name: '../x.png', mimeType: 'image/png', bytes })
+          )
+          await expectRejected(() =>
+            window.noodleAPI!.assets.importBytes({
+              name: 'proof.png',
+              mimeType: 'image/png',
+              bytes: [1, 2, 3] as unknown as Uint8Array
+            })
+          )
+          return 'Uint8Array round-tripped and invalid asset inputs were rejected'
+        })
+      )
+      return checks
+    }
+
+    const expectRejected = async (call: () => Promise<unknown>): Promise<void> => {
+      try {
+        await call()
+      } catch {
+        return
+      }
+      throw new Error('Expected bridge call to reject')
+    }
+
     window.api
       .runChecks()
-      .then((res) => {
-        setReport(res)
-        window.api.reportRendererStatus({ success: true, report: res })
+      .then(async (res) => {
+        const rendererChecks = await runRendererChecks()
+        const report = {
+          ...res,
+          checks: [...res.checks, ...rendererChecks],
+          allPassed: res.allPassed && rendererChecks.every((check) => check.status === 'PASS')
+        }
+        setReport(report)
+        window.api.reportRendererStatus({ success: true, report })
       })
       .catch((e: unknown) => {
         const errMsg = e instanceof Error ? e.message : String(e)

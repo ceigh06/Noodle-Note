@@ -1,4 +1,5 @@
-// Mock of the Electron preload bridge (window.noodleAPI). Async + latency to mimic IPC.
+import type { NoodleAPI } from '../../../shared/contracts'
+
 export type Pillar = 'sources' | 'manual' | 'ai'
 export type Category = 'Videos' | 'Wishlist' | 'Assignment' | 'Projects' | 'Work' | 'Study'
 
@@ -7,82 +8,43 @@ export interface Note {
   title: string
   category: Category
   pillar: Pillar
-  content: string // HTML
-  updatedAt: string // ISO
+  content: string
+  updatedAt: string
 }
 
-const lorem =
-  'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante venenatis dapibus posuere velit aliquet. Donec ullamcorper nulla non metus auctor fringilla.'
-
-const seed: Note[] = (
-  [
-    ['Cell Respiration Overview', 'Study', 'manual'],
-    ['Thesis Proposal Draft', 'Work', 'manual'],
-    ['Calculus Problem Set 4', 'Assignment', 'manual'],
-    ['Robotics Capstone Plan', 'Projects', 'manual'],
-    ['MIT 6.006 Lecture Clips', 'Videos', 'sources'],
-    ['Organic Chem Slides — Week 3', 'Study', 'sources'],
-    ['Research Paper: Attention Is All You Need', 'Work', 'sources'],
-    ['Lab Equipment to Buy', 'Wishlist', 'manual'],
-    ['Study Guide: Thermodynamics', 'Study', 'ai'],
-    ['Gap Analysis: Linear Algebra', 'Assignment', 'ai'],
-    ['Auto Summary: History Readings', 'Work', 'ai']
-  ] as [string, string, string][]
-).map(([title, category, pillar], i) => ({
-  id: `n${i + 1}`,
-  title,
-  category: category as Category,
-  pillar: pillar as Pillar,
-  content: `<h1>${title}</h1><p>${lorem}</p><ul><li>Key idea one</li><li>Key idea two</li></ul><p>${lorem}</p>`,
-  updatedAt: new Date(2021, 0, 7 - i, 21, 38 - i).toISOString()
-}))
-
-let db = [...seed]
-const ipc = <T>(v: T): Promise<T> =>
-  new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 120))
+const getBridge = (): NoodleAPI => {
+  if (!window.noodleAPI)
+    throw new Error(
+      'Desktop bridge unavailable: window.noodleAPI is not defined. Noodle runs only inside the desktop app.'
+    )
+  return window.noodleAPI
+}
 
 export const noodleAPI = {
   notes: {
-    list: (): Promise<Note[]> => ipc(db),
-    get: (id: string): Promise<Note | null> => ipc(db.find((n) => n.id === id) ?? null),
-    save: (note: Note): Promise<Note> => {
-      const updated = { ...note, updatedAt: new Date().toISOString() }
-      db = db.some((n) => n.id === note.id)
-        ? db.map((n) => (n.id === note.id ? updated : n))
-        : [updated, ...db]
-      return ipc(updated)
-    },
-    create: (pillar: Pillar = 'manual'): Promise<Note> => {
-      const note: Note = {
-        id: `n${Date.now()}`,
-        title: 'Untitled note',
-        category: 'Study',
-        pillar,
-        content: '<h1>Untitled note</h1><p></p>',
-        updatedAt: new Date().toISOString()
-      }
-      db = [note, ...db]
-      return ipc(note)
-    }
+    list: (): Promise<Note[]> => getBridge().notes.list(),
+    get: (id: string): Promise<Note | null> => getBridge().notes.get(id),
+    save: (note: Note): Promise<Note> => getBridge().notes.save(note),
+    create: (pillar: Pillar = 'manual'): Promise<Note> => getBridge().notes.create(pillar)
   },
   assets: {
-    // In Electron this would copy the file into the vault's ./assets folder.
-    import: (file: File): Promise<{ relativePath: string; previewUrl: string }> =>
-      new Promise<{ relativePath: string; previewUrl: string }>((r) =>
-        setTimeout(
-          () => r({ relativePath: `./assets/${file.name}`, previewUrl: URL.createObjectURL(file) }),
-          80
-        )
-      )
+    import: async (file: File): Promise<{ relativePath: string; previewUrl: string }> => {
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const result = await getBridge().assets.importBytes({
+        name: file.name,
+        mimeType: file.type,
+        bytes
+      })
+      return { relativePath: result.relativePath, previewUrl: URL.createObjectURL(file) }
+    },
+    importBytes: (input: { name: string; mimeType: string; bytes: Uint8Array }) =>
+      getBridge().assets.importBytes(input)
+  }
+} satisfies NoodleAPI & {
+  assets: {
+    import: (file: File) => Promise<{ relativePath: string; previewUrl: string }>
   }
 }
-
-declare global {
-  interface Window {
-    noodleAPI?: typeof noodleAPI
-  }
-}
-if (typeof window !== 'undefined') window.noodleAPI = noodleAPI
 
 export const formatStamp = (iso: string): string => {
   const d = new Date(iso)

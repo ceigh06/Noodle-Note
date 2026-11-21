@@ -20,3 +20,6 @@
   - `contextIsolation: true`
   - `nodeIntegration: false`
 - **Local-First Storage & Offline:** All assets and fonts are bundled locally; remote network calls are blocked by CSP.
+- **IPC Contract:** The contract is defined in `src/shared/contracts.ts`; channels use the `noodle:<area>:<method>` naming convention.
+- **Renderer Bridge:** The renderer may use only `window.noodleAPI` and `window.noodleSecureKeys`; `window.noodleStudy` arrives with v0.3. Renderer code must never use `ipcRenderer`, a generic `invoke`, or `send`. `window.api` is proof-only.
+- **IPC Validation:** Every IPC handler validates its payload and calls `assertTrustedSender`.
