@@ -21,11 +21,16 @@ const getBridge = (): NoodleAPI => {
 }
 
 export const noodleAPI = {
+  workspace: {
+    open: (path: string): Promise<void> => getBridge().workspace.open(path),
+    close: (): Promise<void> => getBridge().workspace.close()
+  },
   notes: {
     list: (): Promise<Note[]> => getBridge().notes.list(),
     get: (id: string): Promise<Note | null> => getBridge().notes.get(id),
     save: (note: Note): Promise<Note> => getBridge().notes.save(note),
-    create: (pillar: Pillar = 'manual'): Promise<Note> => getBridge().notes.create(pillar)
+    create: (pillar: Pillar = 'manual'): Promise<Note> => getBridge().notes.create(pillar),
+    delete: (id: string): Promise<void> => getBridge().notes.delete(id)
   },
   assets: {
     import: async (file: File): Promise<{ relativePath: string; previewUrl: string }> => {

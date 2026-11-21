@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { importBytes } from './assets'
 import { createNote, getNote, listNotes, saveNote } from './notes'
 import { isSecureStorageAvailable, testAndSaveKey } from './secureKeys'
@@ -7,6 +7,9 @@ import { assertTrustedSender, trustedRendererURL } from './trusted'
 import { seed } from '../mock/seed'
 
 describe('mock IPC handlers', () => {
+  beforeEach(() => {
+    vi.stubEnv('NOODLE_MOCK', '1')
+  })
   it('returns the 11 seed notes', async () => {
     expect(await listNotes()).toHaveLength(11)
     expect(seed).toHaveLength(11)
@@ -24,10 +27,26 @@ describe('mock IPC handlers', () => {
     await expect(createNote('ai')).resolves.toMatchObject({ pillar: 'ai' })
   })
 
-  it('rejects invalid note payloads', async () => {
-    await expect(getNote('')).rejects.toThrow()
-    await expect(saveNote({})).rejects.toThrow()
-    await expect(createNote('invalid')).rejects.toThrow()
+  it('rejects malformed payloads and traversal identifiers', async () => {
+    await expect(getNote('')).rejects.toThrow('Invalid note id')
+    await expect(getNote('../outside')).rejects.toThrow('Invalid note id')
+    await expect(getNote('C:\\outside')).rejects.toThrow('Invalid note id')
+    await expect(saveNote({})).rejects.toThrow('Invalid note')
+    await expect(
+      saveNote({
+        id: 'n1',
+        title: 'x',
+        category: 'Study',
+        pillar: 'manual',
+        content: '',
+        updatedAt: '',
+        extra: true
+      })
+    ).rejects.toThrow('Invalid note fields')
+    await expect(createNote('invalid')).rejects.toThrow('Invalid pillar')
+    await expect(
+      importBytes({ name: 'x.png', mimeType: 'image/png', bytes: new Uint8Array(1), extra: true })
+    ).rejects.toThrow('Invalid asset fields')
   })
 
   it('imports valid image bytes and rejects invalid assets', async () => {

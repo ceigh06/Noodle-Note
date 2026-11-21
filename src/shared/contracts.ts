@@ -14,11 +14,16 @@ export type Provider = 'openai' | 'anthropic' | 'gemini'
 export type KeySetupResult = { success: boolean; message?: string }
 
 export interface NoodleAPI {
+  workspace: {
+    open: (path: string) => Promise<void>
+    close: () => Promise<void>
+  }
   notes: {
     list: () => Promise<Note[]>
     get: (id: string) => Promise<Note | null>
     save: (note: Note) => Promise<Note>
     create: (pillar?: Pillar) => Promise<Note>
+    delete: (id: string) => Promise<void>
   }
   assets: {
     importBytes: (input: {
@@ -44,11 +49,16 @@ export interface NoodleStudy {
 }
 
 export const IPC_CHANNELS = {
+  workspace: {
+    open: 'noodle:workspace:open',
+    close: 'noodle:workspace:close'
+  },
   notes: {
     list: 'noodle:notes:list',
     get: 'noodle:notes:get',
     save: 'noodle:notes:save',
-    create: 'noodle:notes:create'
+    create: 'noodle:notes:create',
+    delete: 'noodle:notes:delete'
   },
   assets: {
     importBytes: 'noodle:assets:importBytes'

@@ -17,11 +17,16 @@ export const createBridge = (
   noodleSecureKeys: NoodleSecureKeys
 } => ({
   noodleAPI: {
+    workspace: {
+      open: (path: string) => invoke(IPC_CHANNELS.workspace.open, path) as Promise<void>,
+      close: () => invoke(IPC_CHANNELS.workspace.close) as Promise<void>
+    },
     notes: {
       list: () => invoke(IPC_CHANNELS.notes.list) as Promise<Note[]>,
       get: (id: string) => invoke(IPC_CHANNELS.notes.get, id) as Promise<Note | null>,
       save: (note: Note) => invoke(IPC_CHANNELS.notes.save, note) as Promise<Note>,
-      create: (pillar?: Pillar) => invoke(IPC_CHANNELS.notes.create, pillar) as Promise<Note>
+      create: (pillar?: Pillar) => invoke(IPC_CHANNELS.notes.create, pillar) as Promise<Note>,
+      delete: (id: string) => invoke(IPC_CHANNELS.notes.delete, id) as Promise<void>
     },
     assets: {
       importBytes: (input: { name: string; mimeType: string; bytes: Uint8Array }) =>

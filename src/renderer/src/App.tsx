@@ -102,27 +102,36 @@ export default function App(): React.JSX.Element {
           const values = {
             require: typeof (globalThis as { require?: unknown }).require,
             process: typeof (globalThis as { process?: unknown }).process,
+            fs: typeof (globalThis as { fs?: unknown }).fs,
+            Buffer: typeof (globalThis as { Buffer?: unknown }).Buffer,
+            betterSqlite3: typeof (globalThis as { betterSqlite3?: unknown }).betterSqlite3,
             electron: typeof (window as Window & { electron?: unknown }).electron
           }
           if (
             values.require !== 'undefined' ||
             values.process !== 'undefined' ||
+            values.fs !== 'undefined' ||
+            values.Buffer !== 'undefined' ||
+            values.betterSqlite3 !== 'undefined' ||
             values.electron !== 'undefined'
           )
             throw new Error(`Isolation values: ${JSON.stringify(values)}`)
-          return `require=${values.require}, process=${values.process}, window.electron=${values.electron}`
+          return `require=${values.require}, process=${values.process}, fs=${values.fs}, Buffer=${values.Buffer}, better-sqlite3=${values.betterSqlite3}, window.electron=${values.electron}`
         })
       )
       checks.push(
         await rendererCheck('ipc-surface', () => {
           const apiKeys = Object.keys(window.noodleAPI ?? {})
+          const workspaceKeys = Object.keys(window.noodleAPI?.workspace ?? {})
           const noteKeys = Object.keys(window.noodleAPI?.notes ?? {})
           const assetKeys = Object.keys(window.noodleAPI?.assets ?? {})
           const secureKeys = Object.keys(window.noodleSecureKeys ?? {})
           const forbidden = ['ipcRenderer', 'invoke', 'send', 'electron']
           const invalid =
-            JSON.stringify(apiKeys) !== JSON.stringify(['notes', 'assets']) ||
-            JSON.stringify(noteKeys) !== JSON.stringify(['list', 'get', 'save', 'create']) ||
+            JSON.stringify(apiKeys) !== JSON.stringify(['workspace', 'notes', 'assets']) ||
+            JSON.stringify(workspaceKeys) !== JSON.stringify(['open', 'close']) ||
+            JSON.stringify(noteKeys) !==
+              JSON.stringify(['list', 'get', 'save', 'create', 'delete']) ||
             JSON.stringify(assetKeys) !== JSON.stringify(['importBytes']) ||
             JSON.stringify(secureKeys) !==
               JSON.stringify(['isSecureStorageAvailable', 'testAndSaveKey']) ||
@@ -130,9 +139,56 @@ export default function App(): React.JSX.Element {
             forbidden.some((key) => Object.prototype.hasOwnProperty.call(window, key))
           if (invalid)
             throw new Error(
-              `api=${JSON.stringify(apiKeys)}, notes=${JSON.stringify(noteKeys)}, assets=${JSON.stringify(assetKeys)}, secure=${JSON.stringify(secureKeys)}, noodleStudy=${typeof window.noodleStudy}, window.api=${typeof window.api}`
+              `api=${JSON.stringify(apiKeys)}, workspace=${JSON.stringify(workspaceKeys)}, notes=${JSON.stringify(noteKeys)}, assets=${JSON.stringify(assetKeys)}, secure=${JSON.stringify(secureKeys)}, noodleStudy=${typeof window.noodleStudy}, window.api=${typeof window.api}`
             )
           return `window.api=${typeof window.api}`
+        })
+      )
+      checks.push(
+        await rendererCheck('ipc-validation', async () => {
+          const expectRejected = async (
+            label: string,
+            call: () => Promise<unknown>
+          ): Promise<string> => {
+            try {
+              await call()
+            } catch (error) {
+              return `${label}: ${error instanceof Error ? error.message : String(error)}`
+            }
+            throw new Error(`${label}: expected rejection`)
+          }
+          await window.noodleAPI!.workspace.open('__NOODLE_VERIFY_WORKSPACE__')
+          const errors = [
+            await expectRejected('wrong note id type', () =>
+              window.noodleAPI!.notes.get(123 as unknown as string)
+            ),
+            await expectRejected('note id traversal', () =>
+              window.noodleAPI!.notes.get('../outside')
+            ),
+            await expectRejected('note id absolute path', () =>
+              window.noodleAPI!.notes.get('C:\\\\outside')
+            ),
+            await expectRejected('extra note field', () =>
+              window.noodleAPI!.notes.save({
+                id: 'n1',
+                title: 'x',
+                category: 'Study',
+                pillar: 'manual',
+                content: '',
+                updatedAt: '',
+                extra: true
+              } as never)
+            ),
+            await expectRejected('sources write', () => window.noodleAPI!.notes.create('sources')),
+            await expectRejected('asset traversal', () =>
+              window.noodleAPI!.assets.importBytes({
+                name: '../outside.png',
+                mimeType: 'image/png',
+                bytes: new Uint8Array(1)
+              })
+            )
+          ]
+          return errors.join('; ')
         })
       )
       checks.push(

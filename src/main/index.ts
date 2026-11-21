@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { runAllChecks } from './checks'
 import { registerNoodleIpc } from './ipc/register'
+import { closeWorkspace, openWorkspace } from './ipc/workspace'
 import { assertTrustedSender } from './ipc/trusted'
 
 const productionContentSecurityPolicy =
@@ -115,6 +116,7 @@ app.whenReady().then(async () => {
   }
 
   registerNoodleIpc()
+  if (isVerifyOnly) await openWorkspace(join(app.getPath('temp'), 'noodle-verify-workspace'))
 
   ipcMain.handle('run-checks', async (event) => {
     assertTrustedSender(event)
@@ -170,6 +172,10 @@ app.whenReady().then(async () => {
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('will-quit', () => {
+  closeWorkspace()
 })
 
 app.on('window-all-closed', () => {

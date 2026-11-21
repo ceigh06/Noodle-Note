@@ -12,6 +12,9 @@ describe('preload bridge', () => {
         [IPC_CHANNELS.notes.get]: null,
         [IPC_CHANNELS.notes.save]: { id: 'saved' },
         [IPC_CHANNELS.notes.create]: { id: 'created' },
+        [IPC_CHANNELS.notes.delete]: undefined,
+        [IPC_CHANNELS.workspace.open]: undefined,
+        [IPC_CHANNELS.workspace.close]: undefined,
         [IPC_CHANNELS.assets.importBytes]: { relativePath: './assets/x.png' },
         [IPC_CHANNELS.secureKeys.isSecureStorageAvailable]: true,
         [IPC_CHANNELS.secureKeys.testAndSaveKey]: { success: true }
@@ -27,6 +30,7 @@ describe('preload bridge', () => {
     await expect(bridge.noodleAPI.notes.get('n1')).resolves.toBeNull()
     await expect(bridge.noodleAPI.notes.save(note)).resolves.toEqual({ id: 'saved' })
     await expect(bridge.noodleAPI.notes.create('manual')).resolves.toEqual({ id: 'created' })
+    await expect(bridge.noodleAPI.notes.delete('n1')).resolves.toBeUndefined()
     await expect(bridge.noodleAPI.assets.importBytes(asset)).resolves.toEqual({
       relativePath: './assets/x.png'
     })
@@ -38,6 +42,7 @@ describe('preload bridge', () => {
       [IPC_CHANNELS.notes.get, 'n1'],
       [IPC_CHANNELS.notes.save, note],
       [IPC_CHANNELS.notes.create, 'manual'],
+      [IPC_CHANNELS.notes.delete, 'n1'],
       [IPC_CHANNELS.assets.importBytes, asset],
       [IPC_CHANNELS.secureKeys.isSecureStorageAvailable],
       [IPC_CHANNELS.secureKeys.testAndSaveKey, key]
@@ -48,8 +53,8 @@ describe('preload bridge', () => {
     const bridge = createBridge(async () => undefined)
 
     expect(Object.keys(bridge)).toEqual(['noodleAPI', 'noodleSecureKeys'])
-    expect(Object.keys(bridge.noodleAPI)).toEqual(['notes', 'assets'])
-    expect(Object.keys(bridge.noodleAPI.notes)).toEqual(['list', 'get', 'save', 'create'])
+    expect(Object.keys(bridge.noodleAPI)).toEqual(['workspace', 'notes', 'assets'])
+    expect(Object.keys(bridge.noodleAPI.notes)).toEqual(['list', 'get', 'save', 'create', 'delete'])
     expect(Object.keys(bridge.noodleAPI.assets)).toEqual(['importBytes'])
     expect(Object.keys(bridge.noodleSecureKeys)).toEqual([
       'isSecureStorageAvailable',

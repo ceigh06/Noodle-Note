@@ -18,7 +18,15 @@ const validateCategory = (category: unknown): Note['category'] => {
 }
 
 export const validateNoteId = (id: unknown): string => {
-  if (typeof id !== 'string' || id.length === 0 || id.length > 255)
+  if (
+    typeof id !== 'string' ||
+    id.length === 0 ||
+    id.length > 255 ||
+    /[\\/]/.test(id) ||
+    id === '.' ||
+    id === '..' ||
+    /^[a-zA-Z]:/.test(id)
+  )
     throw new Error('Invalid note id')
   return id
 }
@@ -30,8 +38,11 @@ export const validatePillar = (pillar: unknown): Note['pillar'] => {
 }
 
 export const validateNote = (note: unknown): Note => {
-  if (!note || typeof note !== 'object') throw new Error('Invalid note')
+  if (!note || typeof note !== 'object' || Array.isArray(note)) throw new Error('Invalid note')
   const value = note as Record<string, unknown>
+  const allowedKeys = new Set(['id', 'title', 'category', 'pillar', 'content', 'updatedAt'])
+  if (Object.keys(value).some((key) => !allowedKeys.has(key)))
+    throw new Error('Invalid note fields')
   if (typeof value.id !== 'string' || value.id.length === 0 || value.id.length > 255)
     throw new Error('Invalid note id')
   if (typeof value.title !== 'string' || value.title.length > 255)
@@ -62,8 +73,11 @@ export const validateNote = (note: unknown): Note => {
 export const validateAssetInput = (
   input: unknown
 ): { name: string; mimeType: string; bytes: Uint8Array } => {
-  if (!input || typeof input !== 'object') throw new Error('Invalid asset input')
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    throw new Error('Invalid asset input')
   const value = input as Record<string, unknown>
+  if (Object.keys(value).some((key) => !['name', 'mimeType', 'bytes'].includes(key)))
+    throw new Error('Invalid asset fields')
   if (typeof value.name !== 'string' || value.name.length === 0 || value.name.length > 255)
     throw new Error('Invalid asset name')
   if (
@@ -82,8 +96,11 @@ export const validateAssetInput = (
 }
 
 export const validateKeyInput = (input: unknown): { provider: Provider; key: string } => {
-  if (!input || typeof input !== 'object') throw new Error('Invalid key input')
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    throw new Error('Invalid key input')
   const value = input as Record<string, unknown>
+  if (Object.keys(value).some((key) => !['provider', 'key'].includes(key)))
+    throw new Error('Invalid key fields')
   if (typeof value.provider !== 'string' || !providers.includes(value.provider as Provider))
     throw new Error('Invalid provider')
   if (typeof value.key !== 'string' || value.key.length === 0 || value.key.length > 500)

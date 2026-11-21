@@ -1,11 +1,20 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/contracts'
 import { importBytes } from './assets'
-import { createNote, getNote, listNotes, saveNote } from './notes'
+import { createNote, deleteNote, getNote, listNotes, saveNote } from './notes'
 import { isSecureStorageAvailable, testAndSaveKey } from './secureKeys'
 import { assertTrustedSender } from './trusted'
+import { closeWorkspace, openWorkspace } from './workspace'
 
 export const registerNoodleIpc = (): void => {
+  ipcMain.handle(IPC_CHANNELS.workspace.open, (event, path) => {
+    assertTrustedSender(event)
+    return openWorkspace(path)
+  })
+  ipcMain.handle(IPC_CHANNELS.workspace.close, (event) => {
+    assertTrustedSender(event)
+    return closeWorkspace()
+  })
   ipcMain.handle(IPC_CHANNELS.notes.list, (event) => {
     assertTrustedSender(event)
     return listNotes()
@@ -21,6 +30,10 @@ export const registerNoodleIpc = (): void => {
   ipcMain.handle(IPC_CHANNELS.notes.create, (event, pillar) => {
     assertTrustedSender(event)
     return createNote(pillar)
+  })
+  ipcMain.handle(IPC_CHANNELS.notes.delete, (event, id) => {
+    assertTrustedSender(event)
+    return deleteNote(id)
   })
   ipcMain.handle(IPC_CHANNELS.assets.importBytes, (event, input) => {
     assertTrustedSender(event)

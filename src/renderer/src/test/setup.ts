@@ -50,6 +50,10 @@ if (typeof window !== 'undefined') {
     }
   ]
   const noodleAPI: NoodleAPI = {
+    workspace: {
+      open: async () => undefined,
+      close: async () => undefined
+    },
     notes: {
       list: async () => notes,
       get: async (id) => notes.find((note) => note.id === id) ?? null,
@@ -71,6 +75,10 @@ if (typeof window !== 'undefined') {
         }
         notes.unshift(note)
         return note
+      },
+      delete: async (id) => {
+        const index = notes.findIndex((note) => note.id === id)
+        if (index >= 0) notes.splice(index, 1)
       }
     },
     assets: {
