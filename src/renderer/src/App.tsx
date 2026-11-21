@@ -31,6 +31,9 @@ export default function App(): React.JSX.Element {
   }, [])
 
   const executeChecks = useCallback((): void => {
+    if (new URLSearchParams(window.location.search).has('verify')) {
+      console.info('[Verify Stage] proof component executing checks')
+    }
     setRunning(true)
     setError(null)
 
